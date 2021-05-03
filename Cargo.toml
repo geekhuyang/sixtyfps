@@ -35,7 +35,7 @@ members = [
    # 'tests/driver/rust',
    # 'tests/driver/cpp',
    # 'tests/driver/nodejs',
-   # 'tests/driver/interpreter',
+    'tests/driver/interpreter',
 ]
 
 default-members = [
@@ -62,7 +62,7 @@ default-members = [
   #  'tests/doctests',
   #  'tests/driver/rust',
   #  'tests/driver/nodejs',
-  #  'tests/driver/interpreter',
+    'tests/driver/interpreter',
 ]
 
 resolver = "2"
