@@ -992,76 +992,92 @@ impl ItemRenderer for GLItemRenderer {
     }
 
     /// Draws a rectangular shadow shape, which is usually placed underneath another rectangular shape
-    /// with an offset (the drop-shadow-offset-x/y).
-    /// The rendering happens in two phases:
-    ///   * The (possibly round) rectangle is filled with the shadow color.
-    ///   * A blurred shadow border is drawn using femtovg's box gradient. The shadow border is the
-    ///     shape of a slightly bigger rounded rect with the inner shape subtracted. That's because
-    //      we don't want the box gradient to visually "leak" into the inside.
+    /// with an offset (the drop-shadow-offset-x/y). The algorithm follows the HTML Canvas spec 4.12.5.1.18:
+    ///  * Create a new image to cache the shadow rendering
+    ///  * Fill the image with transparent "black"
+    ///  * Draw the (rounded) rectangle at shadow offset_x/offset_y
+    ///  * Blur the image
+    ///  * Fill the image with the shadow color and SourceIn as composition mode
+    ///  * Draw the shadow image
     fn draw_box_shadow(&mut self, box_shadow: std::pin::Pin<&sixtyfps_corelib::items::BoxShadow>) {
-        // TODO: cache path in item to avoid re-tesselation
+        // TODO: * cache image
+        //       * avoid unecessary get() calls on properties, but also ensure that we get() correctly
+        //         for dirty tracking to work.
+        //       * delete image correctly
+
+        if box_shadow.color().alpha() == 0
+            || (box_shadow.blur() == 0.0
+                && box_shadow.offset_x() == 0.
+                && box_shadow.offset_y() == 0.)
+        {
+            return;
+        }
 
         let blur = box_shadow.blur() * self.scale_factor;
         let offset_x = box_shadow.offset_x() * self.scale_factor;
         let offset_y = box_shadow.offset_y() * self.scale_factor;
         let width = box_shadow.width() * self.scale_factor;
         let height = box_shadow.height() * self.scale_factor;
+        let radius = box_shadow.border_radius() * self.scale_factor;
 
-        let shadow_outer_rect: euclid::Rect<f32, euclid::UnknownUnit> =
+        let shadow_rect: euclid::Rect<f32, euclid::UnknownUnit> =
             euclid::rect(offset_x - blur / 2., offset_y - blur / 2., width + blur, height + blur);
 
-        let shadow_inner_rect: euclid::Rect<f32, euclid::UnknownUnit> =
-            euclid::rect(offset_x + blur / 2., offset_y + blur / 2., width - blur, height - blur);
+        let shadow_image = self
+            .shared_data
+            .canvas
+            .borrow_mut()
+            .create_image_empty(
+                shadow_rect.max_x().ceil() as usize,
+                shadow_rect.max_y().ceil() as usize,
+                femtovg::PixelFormat::Rgba8,
+                femtovg::ImageFlags::PREMULTIPLIED | femtovg::ImageFlags::FLIP_Y,
+            )
+            .unwrap();
 
-        let shadow_fill_rect: euclid::Rect<f32, euclid::UnknownUnit> = euclid::rect(
-            shadow_outer_rect.min_x() + blur / 2.,
-            shadow_outer_rect.min_y() + blur / 2.,
-            width,
-            height,
-        );
+        let mut canvas = self.shared_data.canvas.borrow_mut();
+        canvas.save();
 
-        let radius = box_shadow.border_radius() * self.scale_factor;
-        let shadow_paint = femtovg::Paint::box_gradient(
-            shadow_fill_rect.min_x(),
-            shadow_fill_rect.min_y(),
-            shadow_fill_rect.width(),
-            shadow_fill_rect.height(),
-            radius,
-            blur,
-            box_shadow.color().into(),
-            Color::from_argb_u8(0, 0, 0, 0).into(),
+        canvas.set_render_target(femtovg::RenderTarget::Image(shadow_image));
+
+        canvas.reset();
+
+        canvas.clear_rect(
+            0,
+            0,
+            shadow_rect.max_x().ceil() as u32,
+            shadow_rect.max_y().ceil() as u32,
+            femtovg::Color::rgba(0, 0, 0, 0),
         );
 
         let mut shadow_path = femtovg::Path::new();
-        shadow_path.rounded_rect(
-            shadow_outer_rect.min_x(),
-            shadow_outer_rect.min_y(),
-            shadow_outer_rect.width(),
-            shadow_outer_rect.height(),
-            radius,
-        );
-        shadow_path.rounded_rect(
-            shadow_inner_rect.min_x(),
-            shadow_inner_rect.min_y(),
-            shadow_inner_rect.width(),
-            shadow_inner_rect.height(),
-            radius,
-        );
-        shadow_path.solidity(femtovg::Solidity::Hole);
+        shadow_path.rounded_rect(offset_x, offset_y, width, height, radius);
+        canvas
+            .fill_path(&mut shadow_path, femtovg::Paint::color(femtovg::Color::rgb(255, 255, 255)));
 
-        let mut canvas = self.shared_data.canvas.borrow_mut();
-        let mut shadow_inner_fill_path = femtovg::Path::new();
-        shadow_inner_fill_path.rounded_rect(
-            shadow_inner_rect.min_x(),
-            shadow_inner_rect.min_y(),
-            shadow_inner_rect.width(),
-            shadow_inner_rect.height(),
-            radius - blur / 2.,
-        );
-        let fill = femtovg::Paint::color(box_shadow.color().into());
-        canvas.fill_path(&mut shadow_inner_fill_path, fill);
+        // TODO: blur
 
-        canvas.fill_path(&mut shadow_path, shadow_paint);
+        canvas.global_composite_operation(femtovg::CompositeOperation::SourceIn);
+
+        let mut shadow_image_rect = femtovg::Path::new();
+        shadow_image_rect.rect(0., 0., shadow_rect.max_x().ceil(), shadow_rect.max_y().ceil());
+        canvas.fill_path(&mut shadow_image_rect, femtovg::Paint::color(box_shadow.color().into()));
+
+        canvas.restore();
+        canvas.set_render_target(femtovg::RenderTarget::Screen); // not correct if clipping
+
+        canvas.fill_path(
+            &mut shadow_image_rect,
+            femtovg::Paint::image(
+                shadow_image,
+                0.,
+                0.,
+                shadow_rect.max_x().ceil(),
+                shadow_rect.max_y().ceil(),
+                0.0,
+                1.0,
+            ),
+        );
     }
 
     fn combine_clip(&mut self, mut clip_rect: Rect, mut radius: f32, mut border_width: f32) {

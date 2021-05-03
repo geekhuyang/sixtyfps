@@ -27,6 +27,7 @@ TestCase := Window {
 
         Rectangle {
             background: blue;
+            border-radius: 10px;
             drop-shadow-offset-x: 10px;
             drop-shadow-offset-y: 10px;
             drop-shadow-color: #00000080;
