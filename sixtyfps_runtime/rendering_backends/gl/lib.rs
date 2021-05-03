@@ -1055,7 +1055,24 @@ impl ItemRenderer for GLItemRenderer {
         canvas
             .fill_path(&mut shadow_path, femtovg::Paint::color(femtovg::Color::rgb(255, 255, 255)));
 
-        // TODO: blur
+        let shadow_image = if blur != 0. {
+            let blurred_image = canvas
+                .create_image_empty(
+                    shadow_rect.max_x().ceil() as usize,
+                    shadow_rect.max_y().ceil() as usize,
+                    femtovg::PixelFormat::Rgba8,
+                    femtovg::ImageFlags::PREMULTIPLIED | femtovg::ImageFlags::FLIP_Y,
+                )
+                .unwrap();
+            canvas.set_render_target(femtovg::RenderTarget::Image(blurred_image));
+            canvas.render_filtered_image(
+                shadow_image,
+                femtovg::ImageFilter::GaussianBlur { sigma: blur / 2. },
+            );
+            blurred_image
+        } else {
+            shadow_image
+        };
 
         canvas.global_composite_operation(femtovg::CompositeOperation::SourceIn);
 
