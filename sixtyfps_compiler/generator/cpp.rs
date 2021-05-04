@@ -1426,7 +1426,7 @@ fn compile_expression(
                 "[](const auto &a){ auto e1 = std::end(a); auto e2 = const_cast<char*>(e1); auto r = std::strtod(std::begin(a), &e2); return e1 == e2 ? r : 0; }"
                     .into()
             }
-            BuiltinFunction::ImplicitItemSize => {
+            BuiltinFunction::ImplicitLayoutInfo => {
                 unreachable!()
             }
             BuiltinFunction::ColorBrighter => {
@@ -1562,21 +1562,21 @@ fn compile_expression(
                     panic!("internal error: argument to SetFocusItem must be an element")
                 }
             }
-            Expression::BuiltinFunctionReference(BuiltinFunction::ImplicitItemSize) => {
+            Expression::BuiltinFunctionReference(BuiltinFunction::ImplicitLayoutInfo) => {
                 if arguments.len() != 1 {
-                    panic!("internal error: incorrect argument count to ImplicitItemSize call");
+                    panic!("internal error: incorrect argument count to ImplicitLayoutInfo call");
                 }
                 if let Expression::ElementReference(item) = &arguments[0] {
                     let item = item.upgrade().unwrap();
                     let item = item.borrow();
                     let native_item = item.base_type.as_native();
-                    format!("sixtyfps::private_api::{vt}.implicit_size({{&sixtyfps::private_api::{vt}, const_cast<sixtyfps::{ty}*>(&self->{id})}}, &window)",
+                    format!("sixtyfps::private_api::{vt}.layouting_info({{&sixtyfps::private_api::{vt}, const_cast<sixtyfps::{ty}*>(&self->{id})}}, &window)",
                         vt = native_item.vtable_symbol,
                         ty = native_item.class_name,
                         id = item.id
                     )
                 } else {
-                    panic!("internal error: argument to ImplicitItemSize must be an element")
+                    panic!("internal error: argument to ImplicitLayoutInfo must be an element")
                 }
             }
             Expression::BuiltinFunctionReference(BuiltinFunction::RegisterCustomFontByPath) => {
